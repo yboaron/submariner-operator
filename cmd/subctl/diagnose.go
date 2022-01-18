@@ -15,30 +15,41 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package diagnose
+
+package subctl
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/submariner-io/submariner-operator/internal/restconfig"
-	"github.com/submariner-io/submariner-operator/pkg/subctl/cmd"
+	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/pkg/diagnose"
 )
 
 var (
 	podNamespace       string
 	verboseOutput      bool
-	restConfigProducer = restconfig.NewProducer()
+)
 
+var (
 	diagnoseCmd = &cobra.Command{
 		Use:   "diagnose",
 		Short: "Run diagnostic checks on the Submariner deployment and report any issues",
 		Long:  "This command runs various diagnostic checks on the Submariner deployment and reports any issues",
-	}
+    }
+    cniCmd = &cobra.Command{
+		Use:   "cni",
+		Short: "Check the CNI network plugin",
+		Long:  "This command checks if the detected CNI network plugin is supported by Submariner.",
+		Run: func(command *cobra.Command, args []string) {
+			execute.OnMultiCluster(restConfigProducer, diagnose.CheckCNIConfig)
+		},
+    }
 )
 
 func init() {
 	restConfigProducer.AddKubeConfigFlag(diagnoseCmd)
 	restConfigProducer.AddInClusterConfigFlag(diagnoseCmd)
-	cmd.AddToRootCommand(diagnoseCmd)
+	rootCmd.AddCommand(diagnoseCmd)
+	diagnoseCmd.AddCommand(cniCmd)
 }
 
 func addVerboseFlag(command *cobra.Command) {

@@ -27,4 +27,6 @@ const (
 	SubmarinerName          = "submariner"
 	SubmarinerNamespace     = "submariner-operator"
 	TrueLabel               = "true"
+	SubmarinerName          = "submariner"
+	SubmMissingMessage      = "Submariner is not installed"
 )
