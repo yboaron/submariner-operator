@@ -18,35 +18,22 @@ limitations under the License.
 package diagnose
 
 import (
+	"github.com/submariner-io/submariner-operator/internal/execute"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/submariner-io/submariner-operator/internal/cli"
-	"github.com/submariner-io/submariner-operator/pkg/subctl/cmd"
 	"github.com/submariner-io/submariner-operator/pkg/subctl/resource"
 )
+
+var KubeProxyPodNamespace string
 
 const (
 	kubeProxyIPVSIfaceCommand = "ip a s kube-ipvs0"
 	missingInterface          = "ip: can't find device"
 )
 
-func init() {
-	command := &cobra.Command{
-		Use:   "kube-proxy-mode",
-		Short: "Check the kube-proxy mode",
-		Long:  "This command checks if the kube-proxy mode is supported by Submariner.",
-		Run: func(command *cobra.Command, args []string) {
-			cmd.ExecuteMultiCluster(restConfigProducer, checkKubeProxyMode)
-		},
-	}
-
-	addNamespaceFlag(command)
-	diagnoseCmd.AddCommand(command)
-}
-
-func checkKubeProxyMode(cluster *cmd.Cluster) bool {
-	status := cli.NewStatus()
+func CheckKubeProxyMode(cluster *execute.Cluster) bool {
+	status := cli.NewReporter()
 	status.Start("Checking Submariner support for the kube-proxy mode")
 
 	scheduling := resource.PodScheduling{ScheduleOn: resource.GatewayNode, Networking: resource.HostNetworking}
@@ -55,22 +42,24 @@ func checkKubeProxyMode(cluster *cmd.Cluster) bool {
 		Name:       "query-iface-list",
 		ClientSet:  cluster.KubeClient,
 		Scheduling: scheduling,
-		Namespace:  podNamespace,
+		Namespace:  KubeProxyPodNamespace,
 		Command:    kubeProxyIPVSIfaceCommand,
 	})
 	if err != nil {
-		status.EndWithFailure("Error spawning the network pod: %v", err)
+		status.Failure("Error spawning the network pod: %v", err)
+		status.End()
 		return false
 	}
 
+	failed := false
 	if strings.Contains(podOutput, missingInterface) {
-		status.QueueSuccessMessage("The kube-proxy mode is supported")
+		status.Success("The kube-proxy mode is supported")
 	} else {
-		status.QueueFailureMessage("The cluster is deployed with kube-proxy ipvs mode which Submariner does not support")
+		status.Failure("The cluster is deployed with kube-proxy ipvs mode which Submariner does not support")
+		failed = true
 	}
 
-	result := status.ResultFromMessages()
-	status.EndWith(result)
+	status.End()
 
-	return result != cli.Failure
+	return !failed
 }

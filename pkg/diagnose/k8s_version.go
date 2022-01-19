@@ -15,47 +15,40 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package diagnose
 
 import (
-	"github.com/spf13/cobra"
 	"github.com/submariner-io/submariner-operator/internal/cli"
-	"github.com/submariner-io/submariner-operator/pkg/subctl/cmd"
+	"github.com/submariner-io/submariner-operator/internal/execute"
 	"github.com/submariner-io/submariner-operator/pkg/version"
 )
 
-func init() {
-	diagnoseCmd.AddCommand(&cobra.Command{
-		Use:   "k8s-version",
-		Short: "Check the Kubernetes version",
-		Long:  "This command checks if Submariner can be deployed on the Kubernetes version.",
-		Run: func(command *cobra.Command, args []string) {
-			cmd.ExecuteMultiCluster(restConfigProducer, checkK8sVersion)
-		},
-	})
-}
-
-func checkK8sVersion(cluster *cmd.Cluster) bool {
-	status := cli.NewStatus()
+func CheckK8sVersion(cluster *execute.Cluster) bool {
+	status := cli.NewReporter()
 
 	status.Start("Checking Submariner support for the Kubernetes version")
 
-	k8sVersion, failedRequirements, err := version.CheckRequirements(cluster.Config)
+	k8sVersion, failedRequirements, err := version.CheckRequirements(cluster.KubeClient)
 	if err != nil {
-		status.EndWithFailure(err.Error())
+		status.Failure(err.Error())
+		status.End()
 		return false
 	}
 
+	failed := false
 	for i := range failedRequirements {
-		status.QueueFailureMessage(failedRequirements[i])
+		status.Failure(failedRequirements[i])
+		failed = true
 	}
 
-	if status.HasFailureMessages() {
-		status.EndWith(cli.Failure)
+	if failed {
+		status.End()
 		return false
 	}
 
-	status.EndWithSuccess("Kubernetes version %q is supported", k8sVersion)
+	status.Success("Kubernetes version %q is supported", k8sVersion)
+	status.End()
 
 	return true
 }

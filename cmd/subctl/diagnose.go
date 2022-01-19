@@ -25,7 +25,6 @@ import (
 )
 
 var (
-	podNamespace       string
 	verboseOutput      bool
 )
 
@@ -43,13 +42,59 @@ var (
 			execute.OnMultiCluster(restConfigProducer, diagnose.CheckCNIConfig)
 		},
     }
+	connectionsCmd = &cobra.Command{
+		Use:   "connections",
+		Short: "Check the Gateway connections",
+		Long:  "This command checks that the Gateway connections to other clusters are all established",
+		Run: func(command *cobra.Command, args []string) {
+			execute.OnMultiCluster(restConfigProducer, diagnose.CheckConnections)
+		},
+	}
+	deploymentCmd = &cobra.Command{
+		Use:   "deployment",
+		Short: "Check the Submariner deployment",
+		Long:  "This command checks that the Submariner components are properly deployed and running with no overlapping CIDRs.",
+		Run: func(command *cobra.Command, args []string) {
+			execute.OnMultiCluster(restConfigProducer, diagnose.CheckDeployments)
+		},
+	}
+	versionCmd = &cobra.Command{
+		Use:   "k8s-version",
+		Short: "Check the Kubernetes version",
+		Long:  "This command checks if Submariner can be deployed on the Kubernetes version.",
+		Run: func(command *cobra.Command, args []string) {
+			execute.OnMultiCluster(restConfigProducer, diagnose.CheckK8sVersion)
+		},
+	}
+	kpModeCmd = &cobra.Command{
+		Use:   "kube-proxy-mode",
+		Short: "Check the kube-proxy mode",
+		Long:  "This command checks if the kube-proxy mode is supported by Submariner.",
+		Run: func(command *cobra.Command, args []string) {
+			execute.OnMultiCluster(restConfigProducer, diagnose.CheckKubeProxyMode)
+		},
+	}
+	allCmd = &cobra.Command{
+		Use:   "all",
+		Short: "Run all diagnostic checks (except those requiring two kubecontexts)",
+		Long:  "This command runs all diagnostic checks (except those requiring two kubecontexts) and reports any issues",
+		Run: func(command *cobra.Command, args []string) {
+			execute.OnMultiCluster(restConfigProducer, diagnose.All)
+		},
+	}
 )
 
 func init() {
 	restConfigProducer.AddKubeConfigFlag(diagnoseCmd)
 	restConfigProducer.AddInClusterConfigFlag(diagnoseCmd)
+	addNamespaceFlag(kpModeCmd)
 	rootCmd.AddCommand(diagnoseCmd)
 	diagnoseCmd.AddCommand(cniCmd)
+	diagnoseCmd.AddCommand(connectionsCmd)
+	diagnoseCmd.AddCommand(deploymentCmd)
+	diagnoseCmd.AddCommand(versionCmd)
+	diagnoseCmd.AddCommand(kpModeCmd)
+	diagnoseCmd.AddCommand(allCmd)
 }
 
 func addVerboseFlag(command *cobra.Command) {
@@ -57,6 +102,6 @@ func addVerboseFlag(command *cobra.Command) {
 }
 
 func addNamespaceFlag(command *cobra.Command) {
-	command.Flags().StringVar(&podNamespace, "namespace", "default",
+	command.Flags().StringVar(&diagnose.KubeProxyPodNamespace, "namespace", "default",
 		"namespace in which validation pods should be deployed")
 }

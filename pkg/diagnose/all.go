@@ -15,63 +15,51 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package diagnose
 
 import (
 	"context"
 	"fmt"
+	"github.com/submariner-io/submariner-operator/internal/constants"
+	"github.com/submariner-io/submariner-operator/internal/execute"
 
 	"github.com/pkg/errors"
-	"github.com/spf13/cobra"
 	"github.com/submariner-io/submariner-operator/internal/cli"
 	"github.com/submariner-io/submariner-operator/pkg/subctl/cmd"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func init() {
-	diagnoseCmd.AddCommand(&cobra.Command{
-		Use:   "all",
-		Short: "Run all diagnostic checks (except those requiring two kubecontexts)",
-		Long:  "This command runs all diagnostic checks (except those requiring two kubecontexts) and reports any issues",
-		Run: func(command *cobra.Command, args []string) {
-			cmd.ExecuteMultiCluster(restConfigProducer, diagnoseAll)
-		},
-	})
-}
-
-func diagnoseAll(cluster *cmd.Cluster) bool {
-	success := checkK8sVersion(cluster)
+func All(cluster *execute.Cluster) bool {
+	success := CheckK8sVersion(cluster)
 
 	fmt.Println()
 
-	status := cli.NewStatus()
+	status := cli.NewReporter()
 	if cluster.Submariner == nil {
-		status.Start(cmd.SubmMissingMessage)
-		status.EndWith(cli.Warning)
+		status.Warning(constants.SubmMissingMessage)
 
 		return success
 	}
 
-	success = checkCNIConfig(cluster) && success
+	success = CheckCNIConfig(cluster) && success
 
 	fmt.Println()
 
-	success = checkConnections(cluster) && success
+	success = CheckConnections(cluster) && success
 
 	fmt.Println()
 
-	success = checkPods(cluster) && success
+	success = CheckDeployments(cluster) && success
 
 	fmt.Println()
 
-	success = checkOverlappingCIDRs(cluster) && success
+	success = CheckKubeProxyMode(cluster) && success
 
 	fmt.Println()
 
-	success = checkKubeProxyMode(cluster) && success
-
-	fmt.Println()
-
+	//	Skip for now until firewall commands are migrated
+	/*
 	success = checkFirewallMetricsConfig(cluster) && success
 
 	fmt.Println()
@@ -79,7 +67,7 @@ func diagnoseAll(cluster *cmd.Cluster) bool {
 	success = checkVxLANConfig(cluster) && success
 
 	fmt.Println()
-
+   */
 	fmt.Printf("Skipping inter-cluster firewall check as it requires two kubeconfigs." +
 		" Please run \"subctl diagnose firewall inter-cluster\" command manually.\n")
 
