@@ -21,6 +21,8 @@ package execute
 import (
 	"context"
 	"fmt"
+	"os"
+
 	"github.com/pkg/errors"
 	"github.com/submariner-io/submariner-operator/api/submariner/v1alpha1"
 	"github.com/submariner-io/submariner-operator/internal/constants"
@@ -31,11 +33,9 @@ import (
 	subClientsetv1 "github.com/submariner-io/submariner/pkg/client/clientset/versioned"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1opts "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"os"
 )
 
 type Cluster struct {
@@ -80,10 +80,14 @@ func NewCluster(config *rest.Config, clusterName string) (*Cluster, string) {
 	}
 
 	clientProducer, err := client.NewProducerFromRestConfig(config)
+	if err != nil {
+		return nil, fmt.Sprintf("Error creating client producer: %v", err)
+	}
 
 	cluster.KubeClient = clientProducer.ForKubernetes()
 	cluster.DynClient = clientProducer.ForDynamic()
 	cluster.SubmClient = clientProducer.ForSubmariner()
+
 	cluster.Submariner, err = getSubmarinerResourceWithError(clientProducer.ForOperator())
 	if err != nil && !apierrors.IsNotFound(err) {
 		return nil, fmt.Sprintf("Error retrieving Submariner resource: %v", err)
@@ -94,7 +98,7 @@ func NewCluster(config *rest.Config, clusterName string) (*Cluster, string) {
 
 func getSubmarinerResourceWithError(operatorClient operatorClientset.Interface) (*v1alpha1.Submariner, error) {
 	submariner, err := operatorClient.SubmarinerV1alpha1().Submariners(constants.SubmarinerNamespace).
-		Get(context.TODO(), constants.SubmarinerName, v1opts.GetOptions{})
+		Get(context.TODO(), constants.SubmarinerName, metav1.GetOptions{})
 	if err != nil {
 		return nil, errors.WithMessagef(err, "error retrieving Submariner object %s", constants.SubmarinerName)
 	}

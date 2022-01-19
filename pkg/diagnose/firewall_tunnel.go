@@ -15,19 +15,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package diagnose
 
 import (
 	"fmt"
-	"os"
+	"github.com/submariner-io/submariner-operator/internal/constants"
+	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/pkg/reporter"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/submariner-io/submariner-operator/api/submariner/v1alpha1"
 	"github.com/submariner-io/submariner-operator/internal/cli"
-	"github.com/submariner-io/submariner-operator/internal/restconfig"
-	"github.com/submariner-io/submariner-operator/pkg/subctl/cmd"
-	"github.com/submariner-io/submariner-operator/pkg/subctl/cmd/utils"
 	subv1 "github.com/submariner-io/submariner/pkg/apis/submariner.io/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/rest"
@@ -37,59 +36,19 @@ const (
 	clientSourcePort = "9898"
 )
 
-func init() {
-	command := &cobra.Command{
-		Use:   "inter-cluster <localkubeconfig> <remotekubeconfig>",
-		Short: "Check firewall access to setup tunnels between the Gateway node",
-		Long:  "This command checks if the firewall configuration allows tunnels to be configured on the Gateway nodes.",
-		Args: func(command *cobra.Command, args []string) error {
-			if len(args) != 2 {
-				return fmt.Errorf("two kubeconfigs must be specified")
-			}
+func ValidateTunnelConfigAcrossClusters(localCfg, remoteCfg *rest.Config) bool {
+	status := cli.NewReporter()
 
-			same, err := cmd.CompareFiles(args[0], args[1])
-			if err != nil {
-				return err // nolint:wrapcheck // No need to wrap here
-			}
+	localCluster, localClusterFailed := newCluster(localCfg, status)
+	remoteCluster, remoteClusterFailed := newCluster(remoteCfg, status)
 
-			if same {
-				return fmt.Errorf("the specified kubeconfig files are the same")
-			}
-
-			return nil
-		},
-		Run: validateTunnelConfig,
+	if localClusterFailed || remoteClusterFailed {
+		return false
 	}
-
-	addDiagnoseFWConfigFlags(command)
-	addVerboseFlag(command)
-	diagnoseFirewallConfigCmd.AddCommand(command)
-}
-
-func validateTunnelConfig(command *cobra.Command, args []string) {
-	localProducer := restconfig.NewProducerFrom(args[0], "")
-	localCfg, err := localProducer.ForCluster()
-	utils.ExitOnError("The provided local kubeconfig is invalid", err)
-
-	remoteProducer := restconfig.NewProducerFrom(args[1], "")
-	remoteCfg, err := remoteProducer.ForCluster()
-	utils.ExitOnError("The provided remote kubeconfig is invalid", err)
-
-	if !validateTunnelConfigAcrossClusters(localCfg, remoteCfg) {
-		os.Exit(1)
-	}
-}
-
-func validateTunnelConfigAcrossClusters(localCfg, remoteCfg *rest.Config) bool {
-	localCluster := newCluster(localCfg)
 
 	localCluster.Name = localCluster.Submariner.Spec.ClusterID
-
-	remoteCluster := newCluster(remoteCfg)
-
 	remoteCluster.Name = remoteCluster.Submariner.Spec.ClusterID
 
-	status := cli.NewStatus()
 	status.Start(fmt.Sprintf("Checking if tunnels can be setup on the gateway node of cluster %q", localCluster.Name))
 
 	if isClusterSingleNode(remoteCluster, status) {
@@ -97,13 +56,13 @@ func validateTunnelConfigAcrossClusters(localCfg, remoteCfg *rest.Config) bool {
 		return true
 	}
 
-	localEndpoint := getLocalEndpointResource(localCluster, status)
-	if localEndpoint == nil {
+	localEndpoint, failed := getLocalEndpointResource(localCluster, status)
+	if localEndpoint == nil || failed {
 		return false
 	}
 
-	gwNodeName := getActiveGatewayNodeName(localCluster, localEndpoint.Spec.Hostname, status)
-	if gwNodeName == "" {
+	gwNodeName, failed := getActiveGatewayNodeName(localCluster, localEndpoint.Spec.Hostname, status)
+	if gwNodeName == "" || failed {
 		return false
 	}
 
@@ -114,11 +73,11 @@ func validateTunnelConfigAcrossClusters(localCfg, remoteCfg *rest.Config) bool {
 
 	clientMessage := string(uuid.NewUUID())[0:8]
 	podCommand := fmt.Sprintf("timeout %d tcpdump -ln -Q in -A -s 100 -i any udp and dst port %d | grep '%s'",
-		validationTimeout, tunnelPort, clientMessage)
+		ValidationTimeout, tunnelPort, clientMessage)
 
-	sPod, err := spawnSnifferPodOnNode(localCluster.KubeClient, gwNodeName, podNamespace, podCommand)
+	sPod, err := spawnSnifferPodOnNode(localCluster.KubeClient, gwNodeName, KubeProxyPodNamespace, podCommand)
 	if err != nil {
-		status.EndWithFailure("Error spawning the sniffer pod on the Gateway node: %v", err)
+		status.Failure("Error spawning the sniffer pod on the Gateway node: %v", err)
 		return false
 	}
 
@@ -126,7 +85,7 @@ func validateTunnelConfigAcrossClusters(localCfg, remoteCfg *rest.Config) bool {
 
 	gatewayPodIP := getGatewayIP(remoteCluster, localCluster.Name, status)
 	if gatewayPodIP == "" {
-		status.EndWithFailure("Error retrieving the gateway IP of cluster %q", localCluster.Name)
+		status.Failure("Error retrieving the gateway IP of cluster %q", localCluster.Name)
 		return false
 	}
 
@@ -135,9 +94,9 @@ func validateTunnelConfigAcrossClusters(localCfg, remoteCfg *rest.Config) bool {
 
 	// Spawn the pod on the nonGateway node. If we spawn the pod on Gateway node, the tunnel process can
 	// sometimes drop the udp traffic from client pod until the tunnels are properly setup.
-	cPod, err := spawnClientPodOnNonGatewayNode(remoteCluster.KubeClient, podNamespace, podCommand)
+	cPod, err := spawnClientPodOnNonGatewayNode(remoteCluster.KubeClient, KubeProxyPodNamespace, podCommand)
 	if err != nil {
-		status.EndWithFailure("Error spawning the client pod on non-Gateway node of cluster %q: %v",
+		status.Failure("Error spawning the client pod on non-Gateway node of cluster %q: %v",
 			remoteCluster.Name, err)
 		return false
 	}
@@ -145,47 +104,49 @@ func validateTunnelConfigAcrossClusters(localCfg, remoteCfg *rest.Config) bool {
 	defer cPod.DeletePod()
 
 	if err = cPod.AwaitPodCompletion(); err != nil {
-		status.EndWithFailure("Error waiting for the client pod to finish its execution: %v", err)
+		status.Failure("Error waiting for the client pod to finish its execution: %v", err)
 		return false
 	}
 
 	if err = sPod.AwaitPodCompletion(); err != nil {
-		status.EndWithFailure("Error waiting for the sniffer pod to finish its execution: %v", err)
+		status.Failure("Error waiting for the sniffer pod to finish its execution: %v", err)
 		return false
 	}
 
-	if verboseOutput {
-		status.QueueSuccessMessage("tcpdump output from sniffer pod on Gateway node")
-		status.QueueSuccessMessage(sPod.PodOutput)
+	if VerboseOutput {
+		status.Success("tcpdump output from sniffer pod on Gateway node")
+		status.Success(sPod.PodOutput)
 	}
 
 	if !strings.Contains(sPod.PodOutput, clientMessage) {
-		status.EndWithFailure("The tcpdump output from the sniffer pod does not include the message"+
+		status.Failure("The tcpdump output from the sniffer pod does not include the message"+
 			" sent from client pod. Please check that your firewall configuration allows UDP/%d traffic"+
 			" on the %q node.", tunnelPort, localEndpoint.Spec.Hostname)
 
 		return false
 	}
 
-	status.EndWithSuccess("Tunnels can be established on the gateway node")
+	status.Success("Tunnels can be established on the gateway node")
 
 	return true
 }
 
-func newCluster(cfg *rest.Config) *cmd.Cluster {
-	cluster, errMsg := cmd.NewCluster(cfg, "")
+func newCluster(cfg *rest.Config, status reporter.Interface) (*execute.Cluster, bool) {
+	cluster, errMsg := execute.NewCluster(cfg, "")
 	if cluster == nil {
-		utils.ExitWithErrorMsg(errMsg)
+		status.Failure(errMsg)
+		return nil, true
 	}
 
 	if cluster.Submariner == nil {
-		utils.ExitWithErrorMsg(cmd.SubmMissingMessage)
+		status.Warning(constants.SubmMissingMessage)
+		return nil, true
 	}
 
-	return cluster
+	return cluster, false
 }
 
-func getTunnelPort(submariner *v1alpha1.Submariner, endpoint *subv1.Endpoint, status *cli.Status) (int32, bool) {
+func getTunnelPort(submariner *v1alpha1.Submariner, endpoint *subv1.Endpoint, status reporter.Interface) (int32, bool) {
 	var tunnelPort int32
 	var err error
 
@@ -193,26 +154,26 @@ func getTunnelPort(submariner *v1alpha1.Submariner, endpoint *subv1.Endpoint, st
 	case "libreswan", "wireguard":
 		tunnelPort, err = endpoint.Spec.GetBackendPort(subv1.UDPPortConfig, int32(submariner.Spec.CeIPSecNATTPort))
 		if err != nil {
-			status.QueueWarningMessage(fmt.Sprintf("Error reading tunnel port: %v", err))
+			status.Warning(fmt.Sprintf("Error reading tunnel port: %v", err))
 		}
 
 		return tunnelPort, true
 	default:
-		status.QueueFailureMessage(fmt.Sprintf("Could not determine the tunnel port for cable driver %q",
+		status.Failure(fmt.Sprintf("Could not determine the tunnel port for cable driver %q",
 			endpoint.Spec.Backend))
 		return tunnelPort, false
 	}
 }
 
-func getGatewayIP(cluster *cmd.Cluster, localClusterID string, status *cli.Status) string {
+func getGatewayIP(cluster *execute.Cluster, localClusterID string, status reporter.Interface) string {
 	gateways, err := cluster.GetGateways()
 	if err != nil {
-		status.EndWithFailure("Error retrieving gateways from cluster %q: %v", cluster.Name, err)
+		status.Failure("Error retrieving gateways from cluster %q: %v", cluster.Name, err)
 		return ""
 	}
 
 	if len(gateways) == 0 {
-		status.EndWithFailure("There are no gateways detected on cluster %q", cluster.Name)
+		status.Failure("There are no gateways detected on cluster %q", cluster.Name)
 		return ""
 	}
 
@@ -238,7 +199,7 @@ func getGatewayIP(cluster *cmd.Cluster, localClusterID string, status *cli.Statu
 		}
 	}
 
-	status.EndWithFailure("The gateway on cluster %q does not have an active connection to cluster %q",
+	status.Failure("The gateway on cluster %q does not have an active connection to cluster %q",
 		cluster.Name, localClusterID)
 
 	return ""

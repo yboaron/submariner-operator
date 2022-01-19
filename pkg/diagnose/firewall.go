@@ -15,38 +15,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package diagnose
 
 import (
 	"context"
+	"github.com/submariner-io/submariner-operator/internal/constants"
+	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/pkg/reporter"
 
 	"github.com/pkg/errors"
-	"github.com/spf13/cobra"
-	"github.com/submariner-io/submariner-operator/internal/cli"
-	"github.com/submariner-io/submariner-operator/pkg/subctl/cmd"
 	"github.com/submariner-io/submariner-operator/pkg/subctl/resource"
 	subv1 "github.com/submariner-io/submariner/pkg/apis/submariner.io/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
-var diagnoseFirewallConfigCmd = &cobra.Command{
-	Use:   "firewall",
-	Short: "Check the firewall configuration",
-	Long:  "This command checks if the firewall is configured as per Submariner pre-requisites.",
-}
-
-var validationTimeout uint
-
-func addDiagnoseFWConfigFlags(command *cobra.Command) {
-	command.Flags().UintVar(&validationTimeout, "validation-timeout", 90,
-		"timeout in seconds while validating the connection attempt")
-	addNamespaceFlag(command)
-}
-
-func init() {
-	diagnoseCmd.AddCommand(diagnoseFirewallConfigCmd)
-}
+var (
+	ValidationTimeout uint
+    VerboseOutput     bool
+)
 
 func spawnSnifferPodOnGatewayNode(client kubernetes.Interface, namespace, podCommand string) (*resource.NetworkPod, error) {
 	scheduling := resource.PodScheduling{ScheduleOn: resource.GatewayNode, Networking: resource.HostNetworking}
@@ -83,19 +71,19 @@ func spawnPod(client kubernetes.Interface, scheduling resource.PodScheduling, po
 	return pod, nil
 }
 
-func getActiveGatewayNodeName(cluster *cmd.Cluster, hostname string, status *cli.Status) string {
+func getActiveGatewayNodeName(cluster *execute.Cluster, hostname string, status reporter.Interface) (string, bool) {
 	nodes, err := cluster.KubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{
 		LabelSelector: "submariner.io/gateway=true",
 	})
 	if err != nil {
-		status.EndWithFailure("Error obtaining the Gateway Nodes in cluster %q: %v", cluster.Name, err)
-		return ""
+		status.Failure("Error obtaining the Gateway Nodes in cluster %q: %v", cluster.Name, err)
+		return "", true
 	}
 
 	for i := range nodes.Items {
 		node := &nodes.Items[i]
 		if node.Name == hostname {
-			return hostname
+			return hostname, false
 		}
 
 		// On some platforms, the nodeName does not match with the hostname.
@@ -103,60 +91,60 @@ func getActiveGatewayNodeName(cluster *cmd.Cluster, hostname string, status *cli
 		// tiny pod to read the hostname and return the corresponding node.
 		sPod, err := spawnSnifferPodOnNode(cluster.KubeClient, node.Name, "default", "hostname")
 		if err != nil {
-			status.EndWithFailure("Error spawning the sniffer pod on the node %q: %v", node.Name, err)
-			return ""
+			status.Failure("Error spawning the sniffer pod on the node %q: %v", node.Name, err)
+			return "", true
 		}
 
 		defer sPod.DeletePod()
 
 		if err = sPod.AwaitPodCompletion(); err != nil {
-			status.EndWithFailure("Error waiting for the sniffer pod to finish its execution on node %q: %v", node.Name, err)
-			return ""
+			status.Failure("Error waiting for the sniffer pod to finish its execution on node %q: %v", node.Name, err)
+			return "", true
 		}
 
 		if sPod.PodOutput[:len(sPod.PodOutput)-1] == hostname {
-			return node.Name
+			return node.Name, false
 		}
 	}
 
-	status.EndWithFailure("Could not find the active Gateway node %q in local cluster in cluster %q",
+	status.Failure("Could not find the active Gateway node %q in local cluster in cluster %q",
 		hostname, cluster.Name)
 
-	return ""
+	return "", true
 }
 
-func getLocalEndpointResource(cluster *cmd.Cluster, status *cli.Status) *subv1.Endpoint {
-	endpoints, err := cluster.SubmClient.SubmarinerV1().Endpoints(cmd.OperatorNamespace).List(context.TODO(), metav1.ListOptions{})
+func getLocalEndpointResource(cluster *execute.Cluster, status reporter.Interface) (*subv1.Endpoint, bool) {
+	endpoints, err := cluster.SubmClient.SubmarinerV1().Endpoints(constants.OperatorNamespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		status.EndWithFailure("Error obtaining the Endpoints in cluster %q: %v", cluster.Name, err)
-		return nil
+		status.Failure("Error obtaining the Endpoints in cluster %q: %v", cluster.Name, err)
+		return nil, true // failed = true
 	}
 
 	for i := range endpoints.Items {
 		if endpoints.Items[i].Spec.ClusterID == cluster.Submariner.Spec.ClusterID {
-			return &endpoints.Items[i]
+			return &endpoints.Items[i], false
 		}
 	}
 
-	status.EndWithFailure("Could not find the local Endpoint in cluster %q", cluster.Name)
+	status.Failure("Could not find the local Endpoint in cluster %q", cluster.Name)
 
-	return nil
+	return nil, true
 }
 
-func getAnyRemoteEndpointResource(cluster *cmd.Cluster, status *cli.Status) *subv1.Endpoint {
-	endpoints, err := cluster.SubmClient.SubmarinerV1().Endpoints(cmd.OperatorNamespace).List(context.TODO(), metav1.ListOptions{})
+func getAnyRemoteEndpointResource(cluster *execute.Cluster, status reporter.Interface) (*subv1.Endpoint, bool) {
+	endpoints, err := cluster.SubmClient.SubmarinerV1().Endpoints(constants.OperatorNamespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		status.EndWithFailure("Error obtaining the Endpoints in cluster %q: %v", cluster.Name, err)
-		return nil
+		status.Failure("Error obtaining the Endpoints in cluster %q: %v", cluster.Name, err)
+		return nil, true
 	}
 
 	for i := range endpoints.Items {
 		if endpoints.Items[i].Spec.ClusterID != cluster.Submariner.Spec.ClusterID {
-			return &endpoints.Items[i]
+			return &endpoints.Items[i], false
 		}
 	}
 
-	status.EndWithFailure("Could not find any remote Endpoint in cluster %q", cluster.Name)
+	status.Failure("Could not find any remote Endpoint in cluster %q", cluster.Name)
 
-	return nil
+	return nil, true
 }

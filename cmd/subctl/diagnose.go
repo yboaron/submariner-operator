@@ -19,13 +19,13 @@ limitations under the License.
 package subctl
 
 import (
+	"fmt"
 	"github.com/spf13/cobra"
 	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/internal/exit"
+	"github.com/submariner-io/submariner-operator/internal/restconfig"
 	"github.com/submariner-io/submariner-operator/pkg/diagnose"
-)
-
-var (
-	verboseOutput      bool
+	"os"
 )
 
 var (
@@ -82,26 +82,110 @@ var (
 			execute.OnMultiCluster(restConfigProducer, diagnose.All)
 		},
 	}
+    diagnoseFirewallConfigCmd = &cobra.Command{
+	Use:   "firewall",
+	Short: "Check the firewall configuration",
+	Long:  "This command checks if the firewall is configured as per Submariner pre-requisites.",
+    }
+	firewallMetricsCmd = &cobra.Command{
+		Use:   "metrics",
+		Short: "Check firewall access to metrics",
+		Long:  "This command checks if the firewall configuration allows metrics to be accessed from the Gateway nodes.",
+		Run: func(command *cobra.Command, args []string) {
+			execute.OnMultiCluster(restConfigProducer, diagnose.CheckFirewallMetricsConfig)
+		},
+	}
+	firewallVxLANCmd = &cobra.Command{
+		Use:   "intra-cluster",
+		Short: "Check firewall access for intra-cluster Submariner VxLAN traffic",
+		Long:  "This command checks if the firewall configuration allows traffic over vx-submariner interface.",
+		Run: func(command *cobra.Command, args []string) {
+			execute.OnMultiCluster(restConfigProducer, diagnose.CheckVxLANConfig)
+		},
+	}
+	firewallTunnelCmd = &cobra.Command{
+		Use:   "inter-cluster <localkubeconfig> <remotekubeconfig>",
+		Short: "Check firewall access to setup tunnels between the Gateway node",
+		Long:  "This command checks if the firewall configuration allows tunnels to be configured on the Gateway nodes.",
+		Args: func(command *cobra.Command, args []string) error {
+			if len(args) != 2 {
+				return fmt.Errorf("two kubeconfigs must be specified")
+			}
+
+			same, err := compareFiles(args[0], args[1])
+			if err != nil {
+				return err // nolint:wrapcheck // No need to wrap here
+			}
+
+			if same {
+				return fmt.Errorf("the specified kubeconfig files are the same")
+			}
+
+			return nil
+		},
+		Run: validateTunnelConfig,
+	}
 )
 
 func init() {
 	restConfigProducer.AddKubeConfigFlag(diagnoseCmd)
 	restConfigProducer.AddInClusterConfigFlag(diagnoseCmd)
-	addNamespaceFlag(kpModeCmd)
 	rootCmd.AddCommand(diagnoseCmd)
+    addDiagnoseSubCmd()
+	addFirewallSubSubCmd()
+}
+
+func addDiagnoseSubCmd() {
+	addNamespaceFlag(kpModeCmd)
 	diagnoseCmd.AddCommand(cniCmd)
 	diagnoseCmd.AddCommand(connectionsCmd)
 	diagnoseCmd.AddCommand(deploymentCmd)
 	diagnoseCmd.AddCommand(versionCmd)
 	diagnoseCmd.AddCommand(kpModeCmd)
 	diagnoseCmd.AddCommand(allCmd)
+	diagnoseCmd.AddCommand(diagnoseFirewallConfigCmd)
+}
+
+func addFirewallSubSubCmd() {
+	addDiagnoseFWConfigFlags(firewallMetricsCmd)
+	addDiagnoseFWConfigFlags(firewallVxLANCmd)
+	addDiagnoseFWConfigFlags(firewallTunnelCmd)
+	addVerboseFlag(firewallMetricsCmd)
+	addVerboseFlag(firewallVxLANCmd)
+	addVerboseFlag(firewallTunnelCmd)
+	diagnoseFirewallConfigCmd.AddCommand(firewallMetricsCmd)
+	diagnoseFirewallConfigCmd.AddCommand(firewallVxLANCmd)
+	diagnoseFirewallConfigCmd.AddCommand(firewallTunnelCmd)
 }
 
 func addVerboseFlag(command *cobra.Command) {
-	command.Flags().BoolVar(&verboseOutput, "verbose", false, "produce verbose output")
+	command.Flags().BoolVar(&diagnose.VerboseOutput, "verbose", false, "produce verbose output")
 }
 
 func addNamespaceFlag(command *cobra.Command) {
 	command.Flags().StringVar(&diagnose.KubeProxyPodNamespace, "namespace", "default",
 		"namespace in which validation pods should be deployed")
+}
+
+func addDiagnoseFWConfigFlags(command *cobra.Command) {
+	command.Flags().UintVar(&diagnose.ValidationTimeout, "validation-timeout", 90,
+		"timeout in seconds while validating the connection attempt")
+	addNamespaceFlag(command)
+}
+
+func validateTunnelConfig(command *cobra.Command, args []string) {
+	localProducer := restconfig.NewProducerFrom(args[0], "")
+	localCfg, err := localProducer.ForCluster()
+
+	// TODO Jaanki replace this with exit.OnErrorWithMessage once
+	// https://github.com/submariner-io/submariner-operator/pull/1772 is merged.
+	exit.WithMessage(fmt.Sprintf("The provided local kubeconfig is invalid %v", err))
+
+	remoteProducer := restconfig.NewProducerFrom(args[1], "")
+	remoteCfg, err := remoteProducer.ForCluster()
+	exit.WithMessage(fmt.Sprintf("The provided remote kubeconfig is invalid", err))
+
+	if !diagnose.ValidateTunnelConfigAcrossClusters(localCfg, remoteCfg) {
+		os.Exit(1)
+	}
 }
