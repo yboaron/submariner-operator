@@ -177,13 +177,11 @@ func validateTunnelConfig(command *cobra.Command, args []string) {
 	localProducer := restconfig.NewProducerFrom(args[0], "")
 	localCfg, err := localProducer.ForCluster()
 
-	// TODO Jaanki replace this with exit.OnErrorWithMessage once
-	// https://github.com/submariner-io/submariner-operator/pull/1772 is merged.
-	exit.WithMessage(fmt.Sprintf("The provided local kubeconfig is invalid %v", err))
+	exit.OnErrorWithMessage(err, "The provided local kubeconfig is invalid")
 
 	remoteProducer := restconfig.NewProducerFrom(args[1], "")
 	remoteCfg, err := remoteProducer.ForCluster()
-	exit.WithMessage(fmt.Sprintf("The provided remote kubeconfig is invalid", err))
+	exit.OnErrorWithMessage(err, "The provided remote kubeconfig is invalid")
 
 	if !diagnose.ValidateTunnelConfigAcrossClusters(localCfg, remoteCfg) {
 		os.Exit(1)

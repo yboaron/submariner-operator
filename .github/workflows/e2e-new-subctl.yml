@@ -56,3 +56,8 @@ jobs:
           	--kubecontexts cluster1,cluster2
           cmd/bin/subctl benchmark throughput --kubeconfig output/kubeconfigs/kind-config-cluster1 --kubecontexts cluster1 \
             --intra-cluster --verbose
+
+      - name: Run diagnose
+        run: |
+          cmd/bin/subctl diagnose all
+          cmd/bin/subctl diagnose firewall inter-cluster output/kubeconfigs/kind-config-cluster1 output/kubeconfigs/kind-config-cluster2
