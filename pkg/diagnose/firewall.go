@@ -21,7 +21,7 @@ package diagnose
 import (
 	"context"
 	"github.com/submariner-io/submariner-operator/internal/constants"
-	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/pkg/cluster"
 	"github.com/submariner-io/submariner-operator/pkg/reporter"
 
 	"github.com/pkg/errors"
@@ -71,8 +71,8 @@ func spawnPod(client kubernetes.Interface, scheduling resource.PodScheduling, po
 	return pod, nil
 }
 
-func getActiveGatewayNodeName(cluster *execute.Cluster, hostname string, status reporter.Interface) (string, bool) {
-	nodes, err := cluster.KubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{
+func getActiveGatewayNodeName(cluster *cluster.Info, hostname string, status reporter.Interface) (string, bool) {
+	nodes, err := cluster.ClientProducer.ForKubernetes().CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{
 		LabelSelector: "submariner.io/gateway=true",
 	})
 	if err != nil {
@@ -89,7 +89,7 @@ func getActiveGatewayNodeName(cluster *execute.Cluster, hostname string, status 
 		// On some platforms, the nodeName does not match with the hostname.
 		// Submariner Endpoint stores the hostname info in the endpoint and not the nodeName. So, we spawn a
 		// tiny pod to read the hostname and return the corresponding node.
-		sPod, err := spawnSnifferPodOnNode(cluster.KubeClient, node.Name, "default", "hostname")
+		sPod, err := spawnSnifferPodOnNode(cluster.ClientProducer.ForKubernetes(), node.Name, "default", "hostname")
 		if err != nil {
 			status.Failure("Error spawning the sniffer pod on the node %q: %v", node.Name, err)
 			return "", true
@@ -113,8 +113,8 @@ func getActiveGatewayNodeName(cluster *execute.Cluster, hostname string, status 
 	return "", true
 }
 
-func getLocalEndpointResource(cluster *execute.Cluster, status reporter.Interface) (*subv1.Endpoint, bool) {
-	endpoints, err := cluster.SubmClient.SubmarinerV1().Endpoints(constants.OperatorNamespace).List(context.TODO(), metav1.ListOptions{})
+func getLocalEndpointResource(cluster *cluster.Info, status reporter.Interface) (*subv1.Endpoint, bool) {
+	endpoints, err := cluster.ClientProducer.ForSubmariner().SubmarinerV1().Endpoints(constants.OperatorNamespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		status.Failure("Error obtaining the Endpoints in cluster %q: %v", cluster.Name, err)
 		return nil, true // failed = true
@@ -131,8 +131,8 @@ func getLocalEndpointResource(cluster *execute.Cluster, status reporter.Interfac
 	return nil, true
 }
 
-func getAnyRemoteEndpointResource(cluster *execute.Cluster, status reporter.Interface) (*subv1.Endpoint, bool) {
-	endpoints, err := cluster.SubmClient.SubmarinerV1().Endpoints(constants.OperatorNamespace).List(context.TODO(), metav1.ListOptions{})
+func getAnyRemoteEndpointResource(cluster *cluster.Info, status reporter.Interface) (*subv1.Endpoint, bool) {
+	endpoints, err := cluster.ClientProducer.ForSubmariner().SubmarinerV1().Endpoints(constants.OperatorNamespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		status.Failure("Error obtaining the Endpoints in cluster %q: %v", cluster.Name, err)
 		return nil, true

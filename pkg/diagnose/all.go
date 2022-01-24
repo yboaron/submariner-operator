@@ -22,7 +22,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/submariner-io/submariner-operator/internal/constants"
-	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/pkg/cluster"
 	"github.com/submariner-io/submariner-operator/pkg/reporter"
 
 	"github.com/pkg/errors"
@@ -30,7 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func All(cluster *execute.Cluster) bool {
+func All(cluster *cluster.Info) bool {
 	success := CheckK8sVersion(cluster)
 
 	fmt.Println()
@@ -72,8 +72,8 @@ func All(cluster *execute.Cluster) bool {
 	return success
 }
 
-func getNumNodesOfCluster(cluster *execute.Cluster) (int, error) {
-	nodes, err := cluster.KubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+func getNumNodesOfCluster(cluster *cluster.Info) (int, error) {
+	nodes, err := cluster.ClientProducer.ForKubernetes().CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return 0, errors.Wrap(err, "error listing Nodes")
 	}
@@ -81,7 +81,7 @@ func getNumNodesOfCluster(cluster *execute.Cluster) (int, error) {
 	return len(nodes.Items), nil
 }
 
-func isClusterSingleNode(cluster *execute.Cluster, status reporter.Interface) bool {
+func isClusterSingleNode(cluster *cluster.Info, status reporter.Interface) bool {
 	numNodesOfCluster, err := getNumNodesOfCluster(cluster)
 	if err != nil {
 		status.Failure("Error listing the number of nodes of the cluster: %v", err)

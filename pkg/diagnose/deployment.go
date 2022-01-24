@@ -22,7 +22,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/submariner-io/submariner-operator/internal/constants"
-	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/pkg/cluster"
 	"github.com/submariner-io/submariner-operator/pkg/reporter"
 
 	"github.com/submariner-io/submariner-operator/internal/cli"
@@ -32,7 +32,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func CheckDeployments(cluster *execute.Cluster) bool {
+func CheckDeployments(cluster *cluster.Info) bool {
 	status := cli.NewReporter()
 	if cluster.Submariner == nil {
 		status.Warning(constants.SubmMissingMessage)
@@ -42,7 +42,7 @@ func CheckDeployments(cluster *execute.Cluster) bool {
 	return checkOverlappingCIDRs(cluster, status) && checkPods(cluster, status)
 }
 
-func checkOverlappingCIDRs(cluster *execute.Cluster, status reporter.Interface) bool {
+func checkOverlappingCIDRs(cluster *cluster.Info, status reporter.Interface) bool {
 
 	if cluster.Submariner.Spec.GlobalCIDR != "" {
 		status.Start("Globalnet deployment detected - checking if globalnet CIDRs overlap")
@@ -50,7 +50,7 @@ func checkOverlappingCIDRs(cluster *execute.Cluster, status reporter.Interface) 
 		status.Start("Non-Globalnet deployment detected - checking if cluster CIDRs overlap")
 	}
 
-	endpointList, err := cluster.SubmClient.SubmarinerV1().Endpoints(cluster.Submariner.Namespace).List(context.TODO(),
+	endpointList, err := cluster.ClientProducer.ForSubmariner().SubmarinerV1().Endpoints(cluster.Submariner.Namespace).List(context.TODO(),
 		metav1.ListOptions{})
 	if err != nil {
 		status.Failure("Error listing the Submariner endpoints: %v", err)
@@ -108,19 +108,19 @@ func checkOverlappingCIDRs(cluster *execute.Cluster, status reporter.Interface) 
 	return true
 }
 
-func checkPods(cluster *execute.Cluster, status reporter.Interface) bool {
+func checkPods(cluster *cluster.Info, status reporter.Interface) bool {
 	status.Start("Checking Submariner pods")
 
 	deploymentFailed := false
 	deamonSetFailed := false
 
-	submGW := checkDaemonset(cluster.KubeClient, constants.OperatorNamespace, "submariner-gateway", status)
-	submRA := checkDaemonset(cluster.KubeClient, constants.OperatorNamespace, "submariner-routeagent", status)
+	submGW := checkDaemonset(cluster.ClientProducer.ForKubernetes(), constants.OperatorNamespace, "submariner-gateway", status)
+	submRA := checkDaemonset(cluster.ClientProducer.ForKubernetes(), constants.OperatorNamespace, "submariner-routeagent", status)
 
 	// Check if service-discovery components are deployed and running if enabled
 	if cluster.Submariner.Spec.ServiceDiscoveryEnabled {
-		lhAgent := checkDeployment(cluster.KubeClient, constants.OperatorNamespace, "submariner-lighthouse-agent", status)
-		lhCoredns := checkDeployment(cluster.KubeClient, constants.OperatorNamespace, "submariner-lighthouse-coredns", status)
+		lhAgent := checkDeployment(cluster.ClientProducer.ForKubernetes(), constants.OperatorNamespace, "submariner-lighthouse-agent", status)
+		lhCoredns := checkDeployment(cluster.ClientProducer.ForKubernetes(), constants.OperatorNamespace, "submariner-lighthouse-coredns", status)
 		if lhAgent || lhCoredns {
 			deploymentFailed = true
 		}
@@ -128,13 +128,13 @@ func checkPods(cluster *execute.Cluster, status reporter.Interface) bool {
 
 	// Check if globalnet components are deployed and running if enabled
 	if cluster.Submariner.Spec.GlobalCIDR != "" {
-		submGN := checkDaemonset(cluster.KubeClient, constants.OperatorNamespace, "submariner-globalnet", status)
+		submGN := checkDaemonset(cluster.ClientProducer.ForKubernetes(), constants.OperatorNamespace, "submariner-globalnet", status)
 		if submGN || submRA || submGW {
 			deamonSetFailed = true
 		}
 	}
 
-	podFailed := checkPodsStatus(cluster.KubeClient, constants.OperatorNamespace, status)
+	podFailed := checkPodsStatus(cluster.ClientProducer.ForKubernetes(), constants.OperatorNamespace, status)
 
 	if deploymentFailed || deamonSetFailed || podFailed {
 		status.End()

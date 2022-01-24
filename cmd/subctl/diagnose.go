@@ -21,7 +21,7 @@ package subctl
 import (
 	"fmt"
 	"github.com/spf13/cobra"
-	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/cmd/subctl/execute"
 	"github.com/submariner-io/submariner-operator/internal/exit"
 	"github.com/submariner-io/submariner-operator/internal/restconfig"
 	"github.com/submariner-io/submariner-operator/pkg/diagnose"

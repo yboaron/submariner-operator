@@ -274,9 +274,37 @@ func (rcp *Producer) GetClusterID() (string, error) {
 	return "", nil
 }
 
-func (rcp *Producer) ForCluster() (*rest.Config, error) {
-	config, err := rcp.ClientConfig().ClientConfig()
-	return config, errors.Wrap(err, "error retrieving client configuration")
+func (rcp *Producer) ForCluster() (RestConfig, error) {
+	var restConfig RestConfig
+
+	rules := clientcmd.NewDefaultClientConfigLoadingRules()
+	rules.DefaultClientConfig = &clientcmd.DefaultClientConfig
+	overrides := &clientcmd.ConfigOverrides{ClusterDefaults: clientcmd.ClusterDefaults}
+	rules.ExplicitPath = rcp.kubeConfig
+
+	var context string
+	if rcp.kubeContext != "" {
+		context = rcp.kubeContext
+	} else {
+		kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
+		rawConfig, err := kubeConfig.RawConfig()
+		if err != nil {
+			return restConfig, errors.Wrap(err, "error creating kube config")
+		}
+
+		context = rawConfig.CurrentContext
+	}
+
+	if context != "" {
+		overrides.CurrentContext = context
+        var err error
+		restConfig, err = clientConfigAndClusterName(rules, overrides)
+		if err != nil {
+				return restConfig, err
+		}
+	}
+
+	return restConfig, nil
 }
 
 // ClientConfig returns a clientcmd.ClientConfig to use when communicating with K8s.
@@ -298,7 +326,7 @@ func (rcp *Producer) CheckVersionMismatch(cmd *cobra.Command, args []string) err
 	config, err := rcp.ForCluster()
 	utils.ExitOnError("The provided kubeconfig is invalid", err)
 
-	submariner := utils.GetSubmarinerResource(config)
+	submariner := utils.GetSubmarinerResource(config.Config)
 
 	if submariner != nil && submariner.Spec.Version != "" {
 		subctlVer, _ := semver.NewVersion(version.Version)

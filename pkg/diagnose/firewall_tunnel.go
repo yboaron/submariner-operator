@@ -21,7 +21,10 @@ package diagnose
 import (
 	"fmt"
 	"github.com/submariner-io/submariner-operator/internal/constants"
-	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/internal/exit"
+	"github.com/submariner-io/submariner-operator/internal/restconfig"
+	"github.com/submariner-io/submariner-operator/pkg/client"
+	"github.com/submariner-io/submariner-operator/pkg/cluster"
 	"github.com/submariner-io/submariner-operator/pkg/reporter"
 	"strings"
 
@@ -29,14 +32,13 @@ import (
 	"github.com/submariner-io/submariner-operator/internal/cli"
 	subv1 "github.com/submariner-io/submariner/pkg/apis/submariner.io/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
-	"k8s.io/client-go/rest"
 )
 
 const (
 	clientSourcePort = "9898"
 )
 
-func ValidateTunnelConfigAcrossClusters(localCfg, remoteCfg *rest.Config) bool {
+func ValidateTunnelConfigAcrossClusters(localCfg, remoteCfg restconfig.RestConfig) bool {
 	status := cli.NewReporter()
 
 	localCluster, localClusterFailed := newCluster(localCfg, status)
@@ -75,7 +77,7 @@ func ValidateTunnelConfigAcrossClusters(localCfg, remoteCfg *rest.Config) bool {
 	podCommand := fmt.Sprintf("timeout %d tcpdump -ln -Q in -A -s 100 -i any udp and dst port %d | grep '%s'",
 		ValidationTimeout, tunnelPort, clientMessage)
 
-	sPod, err := spawnSnifferPodOnNode(localCluster.KubeClient, gwNodeName, KubeProxyPodNamespace, podCommand)
+	sPod, err := spawnSnifferPodOnNode(localCluster.ClientProducer.ForKubernetes(), gwNodeName, KubeProxyPodNamespace, podCommand)
 	if err != nil {
 		status.Failure("Error spawning the sniffer pod on the Gateway node: %v", err)
 		return false
@@ -94,7 +96,7 @@ func ValidateTunnelConfigAcrossClusters(localCfg, remoteCfg *rest.Config) bool {
 
 	// Spawn the pod on the nonGateway node. If we spawn the pod on Gateway node, the tunnel process can
 	// sometimes drop the udp traffic from client pod until the tunnels are properly setup.
-	cPod, err := spawnClientPodOnNonGatewayNode(remoteCluster.KubeClient, KubeProxyPodNamespace, podCommand)
+	cPod, err := spawnClientPodOnNonGatewayNode(remoteCluster.ClientProducer.ForKubernetes(), KubeProxyPodNamespace, podCommand)
 	if err != nil {
 		status.Failure("Error spawning the client pod on non-Gateway node of cluster %q: %v",
 			remoteCluster.Name, err)
@@ -131,10 +133,15 @@ func ValidateTunnelConfigAcrossClusters(localCfg, remoteCfg *rest.Config) bool {
 	return true
 }
 
-func newCluster(cfg *rest.Config, status reporter.Interface) (*execute.Cluster, bool) {
-	cluster, errMsg := execute.NewCluster(cfg, "")
+func newCluster(config restconfig.RestConfig, status reporter.Interface) (*cluster.Info, bool) {
+	clientProducer, err := client.NewProducerFromRestConfig(config.Config)
+	if err != nil {
+		exit.OnErrorWithMessage(err, "Error creating the client producer")
+	}
+
+	cluster, errMsg := cluster.New(config.ClusterName, clientProducer)
 	if cluster == nil {
-		status.Failure(errMsg)
+		status.Failure(errMsg.Error())
 		return nil, true
 	}
 
@@ -165,7 +172,7 @@ func getTunnelPort(submariner *v1alpha1.Submariner, endpoint *subv1.Endpoint, st
 	}
 }
 
-func getGatewayIP(cluster *execute.Cluster, localClusterID string, status reporter.Interface) string {
+func getGatewayIP(cluster *cluster.Info, localClusterID string, status reporter.Interface) string {
 	gateways, err := cluster.GetGateways()
 	if err != nil {
 		status.Failure("Error retrieving gateways from cluster %q: %v", cluster.Name, err)

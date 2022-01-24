@@ -21,7 +21,7 @@ package diagnose
 import (
 	"context"
 	"fmt"
-	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/pkg/cluster"
 	"github.com/submariner-io/submariner-operator/pkg/reporter"
 
 	"github.com/pkg/errors"
@@ -46,7 +46,7 @@ var calicoGVR = schema.GroupVersionResource{
 	Resource: "ippools",
 }
 
-func CheckCNIConfig(cluster *execute.Cluster) bool {
+func CheckCNIConfig(cluster *cluster.Info) bool {
 	status := cli.NewReporter()
 
 	if cluster.Submariner == nil {
@@ -93,11 +93,11 @@ func detectCalicoConfigMap(clientSet kubernetes.Interface) (bool, error) {
 	return false, nil
 }
 
-func checkCalicoIPPoolsIfCalicoCNI(info *execute.Cluster) bool {
+func checkCalicoIPPoolsIfCalicoCNI(info *cluster.Info) bool {
 	status := cli.NewReporter()
 
 	status.Start("Trying to detect the Calico ConfigMap")
-	found, err := detectCalicoConfigMap(info.KubeClient)
+	found, err := detectCalicoConfigMap(info.ClientProducer.ForKubernetes())
 	if err != nil {
 		status.Failure("Error trying to detect the Calico ConfigMap: ", err)
 
@@ -121,7 +121,7 @@ func checkCalicoIPPoolsIfCalicoCNI(info *execute.Cluster) bool {
 		return false
 	}
 
-	client := info.DynClient.Resource(calicoGVR)
+	client := info.ClientProducer.ForDynamic().Resource(calicoGVR)
 
 	ippoolList, err := client.List(context.TODO(), metav1.ListOptions{})
 	if err != nil {

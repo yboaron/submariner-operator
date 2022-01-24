@@ -15,10 +15,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package diagnose
 
 import (
-	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/pkg/cluster"
 	"strings"
 
 	"github.com/submariner-io/submariner-operator/internal/cli"
@@ -32,7 +33,7 @@ const (
 	missingInterface          = "ip: can't find device"
 )
 
-func CheckKubeProxyMode(cluster *execute.Cluster) bool {
+func CheckKubeProxyMode(cluster *cluster.Info) bool {
 	status := cli.NewReporter()
 	status.Start("Checking Submariner support for the kube-proxy mode")
 
@@ -40,7 +41,7 @@ func CheckKubeProxyMode(cluster *execute.Cluster) bool {
 
 	podOutput, err := resource.SchedulePodAwaitCompletion(&resource.PodConfig{
 		Name:       "query-iface-list",
-		ClientSet:  cluster.KubeClient,
+		ClientSet:  cluster.ClientProducer.ForKubernetes(),
 		Scheduling: scheduling,
 		Namespace:  KubeProxyPodNamespace,
 		Command:    kubeProxyIPVSIfaceCommand,

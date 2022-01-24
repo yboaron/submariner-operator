@@ -21,13 +21,13 @@ package diagnose
 import (
 	"fmt"
 	"github.com/submariner-io/submariner-operator/internal/constants"
-	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/pkg/cluster"
 
 	"github.com/submariner-io/submariner-operator/internal/cli"
 	submv1 "github.com/submariner-io/submariner/pkg/apis/submariner.io/v1"
 )
 
-func CheckConnections(cluster *execute.Cluster) bool {
+func CheckConnections(cluster *cluster.Info) bool {
 	status := cli.NewReporter()
 
 	if cluster.Submariner == nil {

@@ -21,7 +21,7 @@ package diagnose
 import (
 	"fmt"
 	"github.com/submariner-io/submariner-operator/internal/constants"
-	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/pkg/cluster"
 	"github.com/submariner-io/submariner-operator/pkg/reporter"
 	"strings"
 
@@ -32,7 +32,7 @@ const (
 	TCPSniffVxLANCommand = "tcpdump -ln -c 3 -i vx-submariner tcp and port 8080 and 'tcp[tcpflags] == tcp-syn'"
 )
 
-func CheckVxLANConfig(cluster *execute.Cluster) bool {
+func CheckVxLANConfig(cluster *cluster.Info) bool {
 	status := cli.NewReporter()
 
 	if cluster.Submariner == nil {
@@ -61,7 +61,7 @@ func CheckVxLANConfig(cluster *execute.Cluster) bool {
 	return true
 }
 
-func checkFWConfig(cluster *execute.Cluster, status reporter.Interface) bool {
+func checkFWConfig(cluster *cluster.Info, status reporter.Interface) bool {
 	if cluster.Submariner.Status.NetworkPlugin == "OVNKubernetes" {
 		status.Success("This check is not necessary for the OVNKubernetes CNI plugin")
 		return false // failed = false
@@ -84,7 +84,7 @@ func checkFWConfig(cluster *execute.Cluster, status reporter.Interface) bool {
 
 	podCommand := fmt.Sprintf("timeout %d %s", ValidationTimeout, TCPSniffVxLANCommand)
 
-	sPod, err := spawnSnifferPodOnNode(cluster.KubeClient, gwNodeName, KubeProxyPodNamespace, podCommand)
+	sPod, err := spawnSnifferPodOnNode(cluster.ClientProducer.ForKubernetes(), gwNodeName, KubeProxyPodNamespace, podCommand)
 	if err != nil {
 		status.Failure("Error spawning the sniffer pod on the Gateway node: %v", err)
 		return true
@@ -95,7 +95,7 @@ func checkFWConfig(cluster *execute.Cluster, status reporter.Interface) bool {
 	remoteClusterIP := strings.Split(remoteEndpoint.Spec.Subnets[0], "/")[0]
 	podCommand = fmt.Sprintf("nc -w %d %s 8080", ValidationTimeout/2, remoteClusterIP)
 
-	cPod, err := spawnClientPodOnNonGatewayNode(cluster.KubeClient, KubeProxyPodNamespace, podCommand)
+	cPod, err := spawnClientPodOnNonGatewayNode(cluster.ClientProducer.ForKubernetes(), KubeProxyPodNamespace, podCommand)
 	if err != nil {
 		status.Failure(fmt.Sprintf("Error spawning the client pod on non-Gateway node: %v", err))
 		return true

@@ -20,16 +20,16 @@ package diagnose
 
 import (
 	"github.com/submariner-io/submariner-operator/internal/cli"
-	"github.com/submariner-io/submariner-operator/internal/execute"
+	"github.com/submariner-io/submariner-operator/pkg/cluster"
 	"github.com/submariner-io/submariner-operator/pkg/version"
 )
 
-func CheckK8sVersion(cluster *execute.Cluster) bool {
+func CheckK8sVersion(cluster *cluster.Info) bool {
 	status := cli.NewReporter()
 
 	status.Start("Checking Submariner support for the Kubernetes version")
 
-	k8sVersion, failedRequirements, err := version.CheckRequirements(cluster.KubeClient)
+	k8sVersion, failedRequirements, err := version.CheckRequirements(cluster.ClientProducer.ForKubernetes())
 	if err != nil {
 		status.Failure(err.Error())
 		status.End()
