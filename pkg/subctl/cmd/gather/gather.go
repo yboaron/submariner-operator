@@ -21,6 +21,7 @@ package gather
 import (
 	"context"
 	"fmt"
+	"github.com/submariner-io/submariner-operator/internal/exit"
 	"os"
 	"strings"
 	"time"
@@ -33,7 +34,6 @@ import (
 	subOperatorClientset "github.com/submariner-io/submariner-operator/pkg/client/clientset/versioned"
 	"github.com/submariner-io/submariner-operator/pkg/names"
 	"github.com/submariner-io/submariner-operator/pkg/subctl/cmd"
-	"github.com/submariner-io/submariner-operator/pkg/subctl/cmd/utils"
 	"github.com/submariner-io/submariner-operator/pkg/subctl/operator/submarinercr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -103,7 +103,7 @@ var gatherCmd = &cobra.Command{
 
 func gatherData(cluster *cmd.Cluster) bool {
 	err := checkGatherArguments()
-	utils.ExitOnError("Invalid arguments", err)
+	exit.OnErrorWithMessage("Invalid arguments", err)
 
 	if directory == "" {
 		directory = "submariner-" + time.Now().UTC().Format("20060102150405") // submariner-YYYYMMDDHHMMSS
@@ -112,7 +112,7 @@ func gatherData(cluster *cmd.Cluster) bool {
 	if _, err := os.Stat(directory); os.IsNotExist(err) {
 		err := os.MkdirAll(directory, 0o700)
 		if err != nil {
-			utils.ExitOnError(fmt.Sprintf("Error creating directory %q", directory), err)
+			exit.OnErrorWithMessage(fmt.Sprintf("Error creating directory %q", directory), err)
 		}
 	}
 

@@ -54,7 +54,7 @@ func Execute() {
 
 func detectGlobalnet() {
 	clientProducer, err := client.NewProducerFromRestConfig(framework.RestConfigs[framework.ClusterA])
-	exit.OnErrorWithMessage(err, "Error creating client producer")
+	exit.OnErrorWithMessage("Error creating client producer", err)
 
 	operatorClient := clientProducer.ForOperator()
 
@@ -66,7 +66,7 @@ func detectGlobalnet() {
 			" using the operator via 'subctl join'.")
 	}
 
-	exit.OnErrorWithMessage(err, "Error obtaining Submariner resource")
+	exit.OnErrorWithMessage("Error obtaining Submariner resource", err)
 
 	framework.TestContext.GlobalnetEnabled = submariner.Spec.GlobalCIDR != ""
 }

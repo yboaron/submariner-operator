@@ -15,17 +15,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package show
 
 import (
 	"fmt"
+	"github.com/submariner-io/submariner-operator/internal/exit"
 
 	"github.com/spf13/cobra"
 	"github.com/submariner-io/submariner-operator/internal/cli"
 	submarinerclientset "github.com/submariner-io/submariner-operator/pkg/client/clientset/versioned"
 	"github.com/submariner-io/submariner-operator/pkg/discovery/network"
 	"github.com/submariner-io/submariner-operator/pkg/subctl/cmd"
-	"github.com/submariner-io/submariner-operator/pkg/subctl/cmd/utils"
 )
 
 func init() {
@@ -60,10 +61,10 @@ func showNetwork(cluster *cmd.Cluster) bool {
 		msg = "    Discovered network details"
 
 		submarinerClient, err := submarinerclientset.NewForConfig(cluster.Config)
-		utils.ExitOnError("Unable to get the Submariner client", err)
+		exit.OnErrorWithMessage("Unable to get the Submariner client", err)
 
 		clusterNetwork, err = network.Discover(cluster.DynClient, cluster.KubeClient, submarinerClient, cmd.OperatorNamespace)
-		utils.ExitOnError("There was an error discovering network details for this cluster", err)
+		exit.OnErrorWithMessage("There was an error discovering network details for this cluster", err)
 	}
 
 	if clusterNetwork != nil {

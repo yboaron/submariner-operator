@@ -57,7 +57,7 @@ var (
 		},
 		Run: func(command *cobra.Command, args []string) {
 			err := setUpTestFramework(args, restConfigProducer)
-			exit.OnErrorWithMessage(err, "error setting up test framework")
+			exit.OnErrorWithMessage("error setting up test framework", err)
 			benchmark.StartThroughputTests(intraCluster, verbose)
 		},
 	}
@@ -70,7 +70,7 @@ var (
 		},
 		Run: func(command *cobra.Command, args []string) {
 			err := setUpTestFramework(args, restConfigProducer)
-			exit.OnErrorWithMessage(err, "error setting up test framework")
+			exit.OnErrorWithMessage("error setting up test framework", err)
 			benchmark.StartLatencyTests(intraCluster, verbose)
 		},
 	}

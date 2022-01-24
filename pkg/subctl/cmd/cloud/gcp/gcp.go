@@ -16,13 +16,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// This package provides common functionality to run cloud prepare/cleanup on GCP Clusters.
+// Package gcp provides common functionality to run cloud prepare/cleanup on GCP Clusters.
 package gcp
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/submariner-io/submariner-operator/internal/exit"
 	"os"
 	"path/filepath"
 
@@ -69,7 +70,7 @@ func AddGCPFlags(command *cobra.Command) {
 
 	dirname, err := os.UserHomeDir()
 	if err != nil {
-		utils.ExitOnError("failed to find home directory", err)
+		exit.OnErrorWithMessage("failed to find home directory", err)
 	}
 
 	defaultCredentials := filepath.FromSlash(fmt.Sprintf("%s/.gcp/osServiceAccount.json", dirname))
@@ -82,7 +83,7 @@ func RunOnGCP(restConfigProducer restconfig.Producer, gwInstanceType string, ded
 	function func(cloud api.Cloud, gwDeployer api.GatewayDeployer, reporter api.Reporter) error) error {
 	if ocpMetadataFile != "" {
 		err := initializeFlagsFromOCPMetadata(ocpMetadataFile)
-		utils.ExitOnError("Failed to read GCP Cluster information from OCP metadata file", err)
+		exit.OnErrorWithMessage("Failed to read GCP Cluster information from OCP metadata file", err)
 	} else {
 		utils.ExpectFlag(infraIDFlag, infraID)
 		utils.ExpectFlag(regionFlag, region)
@@ -93,7 +94,7 @@ func RunOnGCP(restConfigProducer restconfig.Producer, gwInstanceType string, ded
 	reporter.Started("Retrieving GCP credentials from your GCP configuration")
 
 	creds, err := getGCPCredentials()
-	utils.ExitOnError("Failed to get GCP credentials", err)
+	exit.OnErrorWithMessage("Failed to get GCP credentials", err)
 	reporter.Succeeded("")
 
 	reporter.Started("Initializing GCP connectivity")
@@ -104,21 +105,21 @@ func RunOnGCP(restConfigProducer restconfig.Producer, gwInstanceType string, ded
 	}
 
 	gcpClient, err := gcpClientIface.NewClient(projectID, options)
-	utils.ExitOnError("Failed to initialize a GCP Client", err)
+	exit.OnErrorWithMessage("Failed to initialize a GCP Client", err)
 
 	k8sConfig, err := restConfigProducer.ForCluster()
-	utils.ExitOnError("Failed to initialize a Kubernetes config", err)
+	exit.OnErrorWithMessage("Failed to initialize a Kubernetes config", err)
 
 	clientSet, err := kubernetes.NewForConfig(k8sConfig)
-	utils.ExitOnError("Failed to create Kubernetes client", err)
+	exit.OnErrorWithMessage("Failed to create Kubernetes client", err)
 
 	k8sClientSet := k8s.NewInterface(clientSet)
 
 	restMapper, err := util.BuildRestMapper(k8sConfig)
-	utils.ExitOnError("Failed to create restmapper", err)
+	exit.OnErrorWithMessage("Failed to create restmapper", err)
 
 	dynamicClient, err := dynamic.NewForConfig(k8sConfig)
-	utils.ExitOnError("Failed to create dynamic client", err)
+	exit.OnErrorWithMessage("Failed to create dynamic client", err)
 
 	gcpCloudInfo := gcp.CloudInfo{
 		ProjectID: projectID,
@@ -132,7 +133,7 @@ func RunOnGCP(restConfigProducer restconfig.Producer, gwInstanceType string, ded
 	// with certain images, the instance is not coming up. Needs to be investigated further.
 	gwDeployer := gcp.NewOcpGatewayDeployer(gcpCloudInfo, msDeployer, gwInstanceType, "", dedicatedGWNodes, k8sClientSet)
 
-	utils.ExitOnError("Failed to initialize a GatewayDeployer config", err)
+	exit.OnErrorWithMessage("Failed to initialize a GatewayDeployer config", err)
 
 	return function(gcpCloud, gwDeployer, reporter)
 }

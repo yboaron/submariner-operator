@@ -40,7 +40,7 @@ func WithMessage(message string) {
 }
 
 // OnErrorWithMessage will print the message and quit the program with an error code.
-func OnErrorWithMessage(err error, message string) {
+func OnErrorWithMessage(message string, err error) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s", message, err)
 		fmt.Fprintln(os.Stderr, "")
