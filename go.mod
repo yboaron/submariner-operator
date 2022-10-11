@@ -7,17 +7,22 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d // indirect
 	github.com/coreos/go-semver v0.3.0
 	github.com/coreos/prometheus-operator v0.38.1-0.20200424145508-7e176fda06cc
+	github.com/fatih/color v1.13.0 // indirect
+	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/go-errors/errors v1.2.0 // indirect
 	github.com/go-logr/logr v0.4.0
 	github.com/go-openapi/spec v0.20.3 // indirect
 	github.com/go-openapi/swag v0.19.15 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
+	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-version v1.3.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
+	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.14
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
+	github.com/mitchellh/mapstructure v1.4.3 // indirect
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.18.0
 	github.com/openshift/api v0.0.0-20200324173355-9b3bdf846ea1
@@ -26,7 +31,7 @@ require (
 	github.com/operator-framework/operator-sdk v0.19.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.12.0
-	github.com/spf13/cobra v1.3.0
+	github.com/spf13/cobra v1.6.0
 	github.com/submariner-io/admiral v0.12.0-m3
 	github.com/submariner-io/cloud-prepare v0.12.0-m3.0.20220117145104-8c71f70f26cb
 	github.com/submariner-io/lighthouse v0.12.0-m3
@@ -36,9 +41,11 @@ require (
 	github.com/uw-labs/lichen v0.1.4
 	github.com/xlab/treeprint v1.1.0 // indirect
 	go.starlark.net v0.0.0-20210506034541-84642328b1f0 // indirect
+	go.uber.org/zap v1.17.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 	golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b // indirect
 	google.golang.org/api v0.65.0
+	google.golang.org/grpc v1.42.0 // indirect
 	k8s.io/api v0.21.0
 	k8s.io/apiextensions-apiserver v0.20.1
 	k8s.io/apimachinery v0.21.0
